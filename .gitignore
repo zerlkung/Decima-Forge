@@ -1,0 +1,36 @@
+# Oodle DLL — must be obtained separately from RAD Game Tools
+oo2core_*.dll
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project dev artifacts
+SUMMARY.md
+debug_*.py
+debug_*.txt
+debug_*.log
+test_*.py
+try_*.py
+oodle_log.txt
+output.txt
+
+# Game archives (not for distribution)
+*.bin
+*.core
+*.core.stream
