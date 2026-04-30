@@ -113,6 +113,25 @@ This project is built on research and reverse-engineering work from the communit
 - **[HZDCoreEditor](https://github.com/Nukem9/HZDCoreE)** — Core file format research, RTTI type system
 - **[smhasher](https://github.com/aappleby/smhasher)** — MurmurHash3 reference implementation (public domain)
 
+## Workflow with PrefetchTool
+
+Patch archives (like `Patch_HZDTHAI.bin`) don't contain file path data — all files are stored as 64-bit hashes. To resolve names, you need a prefetch source.
+
+**Option 1: Use initial.bin directly** (slow, 30GB+)
+```bash
+decimaforge file-list Patch_HZDTHAI.bin --prefetch "D:\HZD\Packed_DX12\initial.bin"
+```
+
+**Option 2: Use PrefetchTool** (fast, 2.6MB)
+1. Download [PrefetchTool](https://github.com/Stealch/PrefetchTool) and compile HZDCoreTools
+2. Rebuild prefetch from `initial.bin` → generates a small `.bin` with path data
+3. Use it with `--prefetch`:
+```bash
+decimaforge file-list Patch_HZDTHAI.bin --prefetch Patch_zzzzPrefetch.bin
+```
+
+The first run auto-caches paths to `{archive}.prefetch.txt` — subsequent runs are instant.
+
 ## License
 
 This project is provided for educational and modding purposes. See individual source files for specific attribution. The Oodle compression library is proprietary software by RAD Game Tools and is not included.
@@ -214,6 +233,25 @@ decimaforge repack extracted/ new_archive.bin
 - **[decima-workshop](https://github.com/ShadelessFox/decima-workshop)** — Encryption salts, การเข้ารหัส/ถอดรหัส struct, ผัง file table (Java)
 - **[HZDCoreEditor](https://github.com/Nukem9/HZDCoreE)** — งานวิจัย .core format, ระบบ RTTI type
 - **[smhasher](https://github.com/aappleby/smhasher)** — MurmurHash3 reference implementation (public domain)
+
+## การใช้งานร่วมกับ PrefetchTool
+
+Patch archive (เช่น `Patch_HZDTHAI.bin`) ไม่มีข้อมูลชื่อไฟล์ — ทุกไฟล์เก็บเป็น hash 64-bit ต้องใช้ prefetch source เพื่อแปลง hash → path
+
+**วิธีที่ 1: ใช้ initial.bin โดยตรง** (ช้า, ไฟล์ 30GB+)
+```bash
+decimaforge file-list Patch_HZDTHAI.bin --prefetch "D:\HZD\Packed_DX12\initial.bin"
+```
+
+**วิธีที่ 2: ใช้ PrefetchTool** (เร็ว, ไฟล์ 2.6MB)
+1. ดาวน์โหลด [PrefetchTool](https://github.com/Stealch/PrefetchTool) และ compile HZDCoreTools
+2. Rebuild prefetch จาก `initial.bin` → ได้ไฟล์ `.bin` เล็ก ๆ ที่มีข้อมูล path
+3. ใช้กับ `--prefetch`:
+```bash
+decimaforge file-list Patch_HZDTHAI.bin --prefetch Patch_zzzzPrefetch.bin
+```
+
+ครั้งแรกจะสร้าง cache `{archive}.prefetch.txt` โดยอัตโนมัติ — ครั้งต่อไปอ่านจาก cache ทันที
 
 ## ลิขสิทธิ์
 
