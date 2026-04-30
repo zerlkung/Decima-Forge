@@ -8,9 +8,14 @@ They use BCn (block compression) formats:
 This module extracts raw texture data and wraps it with a DDS header
 for viewing/editing in standard tools.
 
+Based on research from:
+  - HzDTextureExplorer (https://github.com/torandi/HzDTextureExplorer)
+  - ProjectDecima (https://github.com/torandi/ProjectDecima)
+  - HZDCoreEditor (https://github.com/Nukem9/HZDCoreE)
+
 Credit:
-  - Decima-Explorer (https://github.com/acrinym/Decima-Explorer) — HwTexture format, pixel format mapping
-  - HZDCoreEditor (https://github.com/Nukem9/HZDCoreE) — Texture chunk layout, mip count
+  - Decima-Explorer (https://github.com/acrinym/Decima-Explorer) — HwTexture format
+  - decima-workshop (https://github.com/ShadelessFox/decima-workshop) — type IDs
 """
 
 from dataclasses import dataclass
@@ -42,14 +47,16 @@ class FontInfo:
 
 def extract_from_archive(archive_path: str | Path,
                          output_dir: str | Path,
-                         file_names: Optional[dict[int, str]] = None
+                         file_names: Optional[dict[int, str]] = None,
+                         extract_all: bool = False
                          ) -> list[FontInfo]:
-    """Extract all font texture files from an archive.
+    """Extract texture files from an archive.
 
     Args:
         archive_path: Path to .bin archive
         output_dir: Directory to save .dds files
         file_names: Optional hash→path mapping
+        extract_all: If True, extract ALL textures, not just font-named ones
 
     Returns:
         List of FontInfo for extracted textures
@@ -61,16 +68,14 @@ def extract_from_archive(archive_path: str | Path,
     fonts = []
 
     for file_entry in archive.file_entries:
-        # Try to identify font files by path if we have names
-        is_font = False
         path_str = ''
         if file_names and file_entry.hash in file_names:
             path_str = file_names[file_entry.hash]
-            is_font = any(kw in path_str.lower() for kw in
-                          ('font', 'glyph', 'typeface', 'type_face'))
-
-        if not is_font and file_names:
-            continue  # skip non-font files when we have names
+            if not extract_all:
+                is_font = any(kw in path_str.lower() for kw in
+                              ('font', 'glyph', 'typeface', 'type_face'))
+                if not is_font:
+                    continue
 
         try:
             data = archive.extract(file_entry)
@@ -82,7 +87,6 @@ def extract_from_archive(archive_path: str | Path,
         except Exception:
             continue
 
-        # Check Texture, UITexture, TextureList
         for chunk_type, tag in [(TYPE_TEXTURE, 'texture'),
                                  (TYPE_UI_TEXTURE, 'uitexture'),
                                  (TYPE_TEXTURE_LIST, 'texturelist')]:
@@ -92,7 +96,6 @@ def extract_from_archive(archive_path: str | Path,
                 if tex is None or not tex.embedded_data:
                     continue
 
-                # Build DDS file
                 dds_data = tex.to_dds()
 
                 if path_str:

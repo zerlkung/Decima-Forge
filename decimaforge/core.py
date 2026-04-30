@@ -360,119 +360,216 @@ class LocalizedText:
 
 @dataclass
 class ParsedTexture:
-    """Parsed HwTexture from a Texture/UITexture core chunk."""
+    """Parsed HwTexture from a Texture/UITexture core chunk.
+
+    Based on research from:
+      - HzDTextureExplorer (https://github.com/torandi/HzDTextureExplorer)
+      - ProjectDecima (https://github.com/torandi/ProjectDecima)
+      - HZDCoreEditor (https://github.com/Nukem9/HZDCoreE)
+
+    ImageData layout (after BaseItem header):
+      Type: uint16           — 0=2D, 1=3D, 2=CubeMap, 3=2DArray
+      Width: uint16 packed   — bits 0-13=width, bits 14-15=crop
+      Height: uint16 packed  — bits 0-13=height, bits 14-15=crop
+      Slices: uint16
+      TotalMips: uint8
+      PixelFormat: uint8 + 2 unknown bytes
+      Magic: 4 bytes         — must be 00 A9 FF 00 or 00 A9 FF 01
+      Hash: 16 bytes (GUID)
+      ChunkSize: uint32
+      EmbeddedSize: uint32
+      StreamSize: uint32
+      [if StreamSize>0]: StreamMips(u32) + CacheLen(u32) + CachePath + StreamOffset(u64) + StreamLength(u64)
+      EmbeddedData: [EmbeddedSize bytes]
+    """
     chunk: CoreChunk
     width: int
     height: int
     mip_count: int
     pixel_format: int
     texture_type: int
+    slices: int
     embedded_data: bytes
     format_name: str = ''
 
-    # Pixel format mapping (subset)
+    # Complete pixel format mapping from HzDTextureExplorer/ProjectDecima
     FORMAT_NAMES = {
-        0: 'RGBA_5551', 2: 'RGBA_4444', 8: 'RGB_565',
-        12: 'RGBA_8888', 15: 'RGBA_FLOAT_32', 16: 'RGB_FLOAT_32',
-        19: 'RGBA_FLOAT_16', 66: 'BC1', 67: 'BC2', 68: 'BC3',
-        69: 'BC4U', 71: 'BC5U', 73: 'BC6U', 75: 'BC7',
+        0x00: 'RGBA_5551', 0x01: 'RGBA_5551_REV', 0x02: 'RGBA_4444',
+        0x03: 'RGBA_4444_REV', 0x04: 'RGB_888_32', 0x05: 'RGB_888_32_REV',
+        0x06: 'RGB_888', 0x07: 'RGB_888_REV', 0x08: 'RGB_565',
+        0x09: 'RGB_565_REV', 0x0A: 'RGB_555', 0x0B: 'RGB_555_REV',
+        0x0C: 'RGBA_8888', 0x0D: 'RGBA_8888_REV',
+        0x0E: 'RGBE_REV', 0x0F: 'RGBA_FLOAT_32', 0x10: 'RGB_FLOAT_32',
+        0x11: 'RG_FLOAT_32', 0x12: 'R_FLOAT_32',
+        0x13: 'RGBA_FLOAT_16', 0x14: 'RGB_FLOAT_16',
+        0x15: 'RG_FLOAT_16', 0x16: 'R_FLOAT_16',
+        0x17: 'RGBA_UNORM_32', 0x18: 'RG_UNORM_32', 0x19: 'R_UNORM_32',
+        0x1A: 'RGBA_UNORM_16', 0x1B: 'RG_UNORM_16', 0x1C: 'R_UNORM_16',
+        0x1D: 'RGBA_UNORM_8', 0x1E: 'RG_UNORM_8', 0x1F: 'R_UNORM_8',
+        0x20: 'RGBA_NORM_32', 0x21: 'RG_NORM_32', 0x22: 'R_NORM_32',
+        0x23: 'RGBA_NORM_16', 0x24: 'RG_NORM_16', 0x25: 'R_NORM_16',
+        0x26: 'RGBA_NORM_8', 0x27: 'RG_NORM_8', 0x28: 'R_NORM_8',
+        0x29: 'RGBA_UINT_32', 0x2A: 'RG_UINT_32', 0x2B: 'R_UINT_32',
+        0x2C: 'RGBA_UINT_16', 0x2D: 'RG_UINT_16', 0x2E: 'R_UINT_16',
+        0x2F: 'RGBA_UINT_8', 0x30: 'RG_UINT_8', 0x31: 'R_UINT_8',
+        0x32: 'RGBA_INT_32', 0x33: 'RG_INT_32', 0x34: 'R_INT_32',
+        0x35: 'RGBA_INT_16', 0x36: 'RG_INT_16', 0x37: 'R_INT_16',
+        0x38: 'RGBA_INT_8', 0x39: 'RG_INT_8', 0x3A: 'R_INT_8',
+        0x3B: 'RGB_FLOAT_11_11_10', 0x3C: 'RGBA_UNORM_10_10_10_2',
+        0x3D: 'RGB_UNORM_11_11_10',
+        0x3E: 'DEPTH_FLOAT_32_STENCIL_8', 0x3F: 'DEPTH_FLOAT_32_STENCIL_0',
+        0x40: 'DEPTH_24_STENCIL_8', 0x41: 'DEPTH_16_STENCIL_0',
+        0x42: 'BC1', 0x43: 'BC2', 0x44: 'BC3',
+        0x45: 'BC4U', 0x46: 'BC4S',
+        0x47: 'BC5U', 0x48: 'BC5S',
+        0x49: 'BC6U', 0x4A: 'BC6S', 0x4B: 'BC7',
     }
 
-    BC_FORMATS = {66, 67, 68, 69, 71, 73, 75}
+    # Formats that are block-compressed
+    BC_FORMATS = set(range(0x42, 0x4C))
+
+    # DXGI_FORMAT mapping for DX10 DDS header
+    DXGI_FORMATS = {
+        0x42: 71,   # BC1_UNORM
+        0x43: 74,   # BC2_UNORM
+        0x44: 77,   # BC3_UNORM
+        0x45: 80,   # BC4_UNORM
+        0x47: 83,   # BC5_UNORM
+        0x49: 95,   # BC6H_UF16
+        0x4A: 96,   # BC6H_SF16
+        0x4B: 98,   # BC7_UNORM
+        0x0C: 28,   # R8G8B8A8_UNORM
+        0x13: 10,   # R16G16B16A16_FLOAT
+        0x1F: 61,   # R8_UNORM (A8)
+    }
 
     @classmethod
     def parse(cls, chunk: CoreChunk, chunk_type: str = 'texture') -> Optional['ParsedTexture']:
-        """Parse HwTexture data from a Texture or UITexture chunk.
-
-        For Texture chunks, the HwTexture is in the extra data at the end.
-        For UITexture, there are two HwTextures (low-res + high-res).
-
-        HwTexture header (32 bytes):
-            0: texture_type (uint8, 0=2D)
-            2-3: width (uint16)
-            4-5: height (uint16)
-            6-7: slice_info (uint16)
-            8: mip_count (uint8)
-            9: pixel_format (uint8)
-            ...
-            Then: containerSize(uint32), embeddedDataSize(uint32),
-                  streamedDataSize(uint32), streamedMipCount(uint32)
-        """
+        """Parse HwTexture / ImageData from a Texture or UITexture chunk."""
         data = chunk.data
         if len(data) < 48:
             return None
 
         if chunk_type == 'uitexture':
-            # UITexture has LowResDataSize + HiResDataSize before the HwTexture
-            low_res_size = struct.unpack_from('<I', data, 0)[0]
-            tex_start = 4
-            if low_res_size == 0:
-                # Try with offset 8
-                tex_start = 8
-        else:
-            # Texture: find HwTexture by scanning for valid header
-            tex_start = cls._find_hwtexture(data)
+            # UITexture has two textures, parse first one
+            return cls._parse_uitexture(chunk, data)
 
-        if tex_start is None or tex_start + 32 > len(data):
+        return cls._parse_texture(chunk, data)
+
+    @classmethod
+    def _parse_texture(cls, chunk: CoreChunk, data: bytes) -> Optional['ParsedTexture']:
+        """Parse a Texture chunk's ImageData.
+
+        The chunk data is a full RTTI-serialized Texture object:
+          [BaseItem: Size(u32) + GUID(16)]
+          [Name: BaseString]
+          [ImageData: ...]
+        """
+        # Skip BaseItem header (Size + GUID)
+        base_size = struct.unpack_from('<I', data, 0)[0]
+        offset = 20  # Skip Size(u32) + GUID(16)
+
+        # Skip name string
+        if offset + 4 > len(data):
+            return None
+        name_len = struct.unpack_from('<I', data, offset)[0]
+        offset += 8 + name_len  # BaseString: len(u32) + crc(u32) + data
+
+        return cls._parse_imagedata(chunk, data, offset)
+
+    @classmethod
+    def _parse_uitexture(cls, chunk: CoreChunk, data: bytes) -> Optional['ParsedTexture']:
+        """Parse the first texture in a UITexture chunk."""
+        # UITexture: Size+GUID + Name1 + Name2 + InitialSize + Size0(u32) + Size1(u32) + ImageData0 + ImageData1
+        base_size = struct.unpack_from('<I', data, 0)[0]
+        offset = 20
+
+        # Skip two name strings
+        for _ in range(2):
+            if offset + 4 > len(data):
+                return None
+            name_len = struct.unpack_from('<I', data, offset)[0]
+            offset += 8 + name_len
+
+        # Skip InitialSize (4 bytes via ImageSize.ReadUint = width(u32) + height(u32) = 8 bytes)
+        offset += 8
+
+        # Read size of first ImageData
+        if offset + 4 > len(data):
+            return None
+        img_size = struct.unpack_from('<I', data, offset)[0]
+        offset += 4
+
+        # Skip second ImageData size
+        offset += 4
+
+        return cls._parse_imagedata(chunk, data, offset)
+
+    @classmethod
+    def _parse_imagedata(cls, chunk: CoreChunk, data: bytes,
+                         offset: int) -> Optional['ParsedTexture']:
+        """Parse ImageData starting at offset."""
+        if offset + 48 > len(data):
             return None
 
-        return cls._parse_hwtexture(chunk, data, tex_start)
+        # ImageType: uint16
+        tex_type = struct.unpack_from('<H', data, offset)[0]
+        offset += 2
 
-    @classmethod
-    def _find_hwtexture(cls, data: bytes) -> Optional[int]:
-        """Find HwTexture header start in Texture extra data."""
-        # Texture extra data starts at the end of RTTI fields.
-        # RTTI fields for Resource: Name (BaseString) at some offset.
-        # We scan for the HwTexture signature: texture_type in 0-3,
-        # reasonable width/height (power-of-2 or common resolutions)
-        for offset in range(4, min(200, len(data) - 48), 4):
-            if cls._is_valid_tex_header(data, offset):
-                return offset
-        return None
+        # ImageSize: two 14-bit values packed in uint16
+        raw_w = struct.unpack_from('<H', data, offset)[0]
+        width = raw_w & 0x3FFF
+        offset += 2
+        raw_h = struct.unpack_from('<H', data, offset)[0]
+        height = raw_h & 0x3FFF
+        offset += 2
 
-    @classmethod
-    def _is_valid_tex_header(cls, data: bytes, offset: int) -> bool:
-        if offset + 48 > len(data):
-            return False
-        tex_type = data[offset]
-        if tex_type > 3:  # 2D, 3D, CubeMap, 2DArray
-            return False
-        width = struct.unpack_from('<H', data, offset + 2)[0]
-        height = struct.unpack_from('<H', data, offset + 4)[0]
-        if width == 0 or height == 0 or width > 16384 or height > 16384:
-            return False
-        fmt = data[offset + 9]
-        if fmt > 100:
-            return False
-        return True
+        # Slices: uint16
+        slices = struct.unpack_from('<H', data, offset)[0]
+        offset += 2
 
-    @classmethod
-    def _parse_hwtexture(cls, chunk: CoreChunk, data: bytes,
-                         offset: int) -> Optional['ParsedTexture']:
-        tex_type = data[offset]
-        width = struct.unpack_from('<H', data, offset + 2)[0]
-        height = struct.unpack_from('<H', data, offset + 4)[0]
-        mip_count = data[offset + 8]
-        pixel_format = data[offset + 9]
+        # TotalMips: uint8
+        mip_count = data[offset]
+        offset += 1
 
-        fmt_name = cls.FORMAT_NAMES.get(pixel_format, f'unknown_{pixel_format}')
+        # PixelFormat: uint8 + 2 unknown bytes
+        pixel_format = data[offset]
+        offset += 3
 
-        # Read container sizes at offset + 32
-        container_size = struct.unpack_from('<I', data, offset + 32)[0]
-        embedded_size = struct.unpack_from('<I', data, offset + 36)[0]
-        streamed_size = struct.unpack_from('<I', data, offset + 40)[0]
+        # Magic: 4 bytes (should be 00 A9 FF 00 or 00 A9 FF 01)
+        magic = data[offset:offset + 4]
+        offset += 4
+        if magic[0:3] != b'\x00\xa9\xff':
+            # Magic mismatch; try legacy header scanning
+            return None
 
-        # Embedded data starts after the size fields and optional stream handle
-        data_start = offset + 44  # after ContainerSize + EmbeddedDataSize + StreamedDataSize + StreamedMipCount
-        if streamed_size > 0:
-            # Skip stream handle: uint32 pathLen + UTF8 path + uint64 resourceOffset + uint64 resourceLength
-            path_len = struct.unpack_from('<I', data, data_start)[0]
-            data_start += 4 + path_len + 8 + 8
+        # Hash/GUID: 16 bytes
+        offset += 16
 
-        # Embedded data from data_start to end of chunk
-        # (container_size includes the header, so actual pixel data =
-        #  container_size - header_and_handle_size)
-        embedded_data = data[data_start:] if data_start < len(data) else b''
+        # ChunkSize: uint32
+        offset += 4
+
+        # EmbeddedSize: uint32 — non-zero means data follows
+        embedded_size = struct.unpack_from('<I', data, offset)[0]
+        offset += 4
+
+        # StreamSize: uint32 — non-zero means data in .stream file
+        stream_size = struct.unpack_from('<I', data, offset)[0]
+        offset += 4
+
+        # Skip stream handle if present
+        if stream_size > 0:
+            offset += 4  # StreamMipMaps
+            cache_len = struct.unpack_from('<I', data, offset)[0]
+            offset += 4 + cache_len  # CacheSize + CacheString
+            offset += 16  # StreamOffset(u64) + StreamLength(u64)
+
+        # Read embedded data
+        embedded_data = b''
+        if embedded_size > 0 and offset + embedded_size <= len(data):
+            embedded_data = data[offset:offset + embedded_size]
+
+        fmt_name = cls.FORMAT_NAMES.get(pixel_format, f'fmt_{pixel_format:#04x}')
 
         return cls(
             chunk=chunk,
@@ -481,45 +578,66 @@ class ParsedTexture:
             mip_count=mip_count,
             pixel_format=pixel_format,
             texture_type=tex_type,
+            slices=slices,
             embedded_data=embedded_data,
             format_name=fmt_name,
         )
 
     def build_dds_header(self) -> bytes:
-        """Build a minimal DDS header for the texture data."""
+        """Build a full DDS header with DX10 extension for BCn formats."""
         is_bc = self.pixel_format in self.BC_FORMATS
-        fourcc = 0
-        if self.pixel_format == 66:  # BC1
-            fourcc = 0x31545844  # 'DXT1'
-        elif self.pixel_format == 68:  # BC3
-            fourcc = 0x33545844  # 'DXT3'
-        elif self.pixel_format == 69:  # BC4
-            fourcc = 0x34545844  # 'DXT4' (ATI1)
-            fourcc = 0x31495441  # 'ATI1'
-        elif self.pixel_format == 71:  # BC5
-            fourcc = 0x32495441  # 'ATI2'
-        elif self.pixel_format == 75:  # BC7
-            fourcc = 0x44584237  # 'DX10' - needs DX10 extension header
+        dxgi = self.DXGI_FORMATS.get(self.pixel_format)
 
         flags = 0x00081007  # CAPS | HEIGHT | WIDTH | PIXELFORMAT
-        pf_flags = 0x0004 if is_bc else 0x0041  # FOURCC or RGB
+        if self.mip_count > 1:
+            flags |= 0x00020000  # MIPMAPCOUNT
+        if self.slices > 1:
+            flags |= 0x00000008  # DEPTH (used for arrays)
 
-        if self.pixel_format == 75:  # BC7 needs DX10
-            pf_flags = 0x0004
-            fourcc = 0x30315844  # 'DX10'
+        use_dx10 = dxgi is not None and self.pixel_format > 0x41
 
-        header = bytearray(128)
+        header = bytearray(148 if use_dx10 else 128)
         struct.pack_into('<I', header, 0, 0x20534444)   # Magic 'DDS '
-        struct.pack_into('<I', header, 4, 124)           # Size
+        struct.pack_into('<I', header, 4, 124)           # Header size
         struct.pack_into('<I', header, 8, flags)
         struct.pack_into('<I', header, 12, self.height)
         struct.pack_into('<I', header, 16, self.width)
-        struct.pack_into('<I', header, 20, 0)            # PitchOrLinearSize
-        struct.pack_into('<I', header, 28, self.mip_count)
-        struct.pack_into('<I', header, 76, 32)           # PixelFormat size
-        struct.pack_into('<I', header, 80, pf_flags)
-        struct.pack_into('<I', header, 84, fourcc)
-        struct.pack_into('<I', header, 108, 0x00401008)  # Caps
+        struct.pack_into('<I', header, 20, 0)            # Pitch (0 for compressed)
+        struct.pack_into('<I', header, 24, 0)            # Depth
+        struct.pack_into('<I', header, 28, max(self.mip_count, 1))
+
+        # Reserved
+        for i in range(11):
+            struct.pack_into('<I', header, 32 + i * 4, 0)
+
+        # PixelFormat
+        if use_dx10:
+            struct.pack_into('<I', header, 76, 32)       # pfSize
+            struct.pack_into('<I', header, 80, 0x0004)    # FOURCC flag
+            struct.pack_into('<I', header, 84, 0x30315844)  # 'DX10'
+        elif is_bc:
+            fourcc_map = {0x42: 0x31545844, 0x44: 0x33545844, 0x45: 0x31495441, 0x47: 0x32495441}
+            fourcc = fourcc_map.get(self.pixel_format, 0)
+            struct.pack_into('<I', header, 76, 32)
+            struct.pack_into('<I', header, 80, 0x0004)
+            struct.pack_into('<I', header, 84, fourcc)
+        else:
+            struct.pack_into('<I', header, 76, 32)
+            struct.pack_into('<I', header, 80, 0x0041)    # RGB/ALPHA flags
+
+        # Caps
+        caps = 0x00001000  # TEXTURE
+        if self.mip_count > 1:
+            caps |= 0x00400008  # COMPLEX + MIPMAP
+        struct.pack_into('<I', header, 108, caps)
+
+        # DX10 extension header
+        if use_dx10:
+            struct.pack_into('<I', header, 128, dxgi)
+            struct.pack_into('<I', header, 132, 3)        # D3D10_RESOURCE_DIMENSION_TEXTURE2D
+            struct.pack_into('<I', header, 136, 0)        # MiscFlag
+            struct.pack_into('<I', header, 140, max(self.slices, 1))  # ArraySize
+            struct.pack_into('<I', header, 144, 0)        # MiscFlag2 / AlphaMode
 
         return bytes(header)
 

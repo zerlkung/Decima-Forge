@@ -148,8 +148,10 @@ def cmd_extract_fonts(_args):
         pass
 
     output_dir = _args.output or (Path(_args.archive).stem + '_fonts')
-    results = extract_fonts(_args.archive, output_dir, file_names)
-    print(f"Extracted {len(results)} font textures to {output_dir}")
+    results = extract_fonts(_args.archive, output_dir, file_names,
+                            extract_all=_args.all)
+    label = 'texture' if _args.all else 'font texture'
+    print(f"Extracted {len(results)} {label}s to {output_dir}")
     for font in results:
         print(f"  {font.width}x{font.height} {font.format_name} "
               f"({font.data_size:,} bytes) → {Path(font.output_path).name}")
@@ -247,9 +249,10 @@ Examples:
     p.set_defaults(func=cmd_import_loc)
 
     # extract-fonts
-    p = subs.add_parser('extract-fonts', help='Extract font textures')
+    p = subs.add_parser('extract-fonts', help='Extract font/texture files')
     p.add_argument('archive')
     p.add_argument('output', nargs='?', help='Output directory')
+    p.add_argument('--all', '-a', action='store_true', help='Extract all textures, not just fonts')
     p.add_argument('--prefetch', help='Archive with prefetch data (e.g., initial.bin)')
     p.set_defaults(func=cmd_extract_fonts)
 
