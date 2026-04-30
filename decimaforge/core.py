@@ -549,7 +549,9 @@ class PrefetchList:
             Sizes: Array<int32>
             Links: Array<int32>      — flattened adjacency list
 
-        We use a heuristic parser since we don't have full RTTI.
+        Supports two formats:
+          1. Flat layout (HZD original): [count: uint32][strings...]
+          2. Full RTTI layout (PrefetchTool rebuild): uses CRC32 validation
         """
         data = chunk.data
         if len(data) < 16:
@@ -570,48 +572,115 @@ class PrefetchList:
                 return None
             return (value, pos + 8 + length)
 
-        # Try to read array of strings by scanning from beginning
-        # Array header: count(uint32) + items
+        # Try flat format first (HZD original)
         num_files = struct.unpack_from('<I', data, 0)[0]
-        if num_files == 0 or num_files > 500000:
-            return None
+        if 0 < num_files <= 500000:
+            files = []
+            pos = 4
+            for _ in range(num_files):
+                result = read_string_at(pos)
+                if result is None:
+                    break
+                value, pos = result
+                files.append(value)
 
-        files = []
-        pos = 4
-        # Each AssetPath: Path (BaseString). Try reading N strings.
-        for _ in range(num_files):
-            result = read_string_at(pos)
-            if result is None:
-                break
-            value, pos = result
-            files.append(value)
+            if len(files) == num_files:
+                return cls._parse_remaining(data, pos, files)
 
-        if len(files) != num_files:
-            # Files array didn't parse cleanly; try alternate layout
-            return None
+        # Fallback: CRC32-based scan (PrefetchTool / full RTTI format)
+        files = cls._scan_paths_crc32(data)
+        if files:
+            return cls(files=files, sizes=[], links=[])
 
-        # Next: Sizes array (int32 count + items)
-        if pos + 4 > len(data):
-            return None
-        num_sizes = struct.unpack_from('<I', data, pos)[0]
-        pos += 4
+        return None
+
+    @classmethod
+    def _parse_remaining(cls, data: bytes, pos: int,
+                         files: list[str]) -> 'PrefetchList':
+        """Parse Sizes and Links arrays after Files."""
         sizes = []
-        for _ in range(num_sizes):
-            if pos + 4 > len(data):
-                break
-            sizes.append(struct.unpack_from('<i', data, pos)[0])
-            pos += 4
-
-        # Next: Links array (int32 count + items)
-        if pos + 4 > len(data):
-            return cls(files=files, sizes=sizes, links=[])
-        num_links = struct.unpack_from('<I', data, pos)[0]
-        pos += 4
         links = []
-        for _ in range(num_links):
-            if pos + 4 > len(data):
-                break
-            links.append(struct.unpack_from('<i', data, pos)[0])
+
+        if pos + 4 <= len(data):
+            num_sizes = struct.unpack_from('<I', data, pos)[0]
             pos += 4
+            for _ in range(min(num_sizes, 500000)):
+                if pos + 4 > len(data):
+                    break
+                sizes.append(struct.unpack_from('<i', data, pos)[0])
+                pos += 4
+
+        if pos + 4 <= len(data):
+            num_links = struct.unpack_from('<I', data, pos)[0]
+            pos += 4
+            for _ in range(min(num_links, 500000)):
+                if pos + 4 > len(data):
+                    break
+                links.append(struct.unpack_from('<i', data, pos)[0])
+                pos += 4
 
         return cls(files=files, sizes=sizes, links=links)
+
+    @classmethod
+    def _scan_paths_crc32(cls, data: bytes) -> list[str]:
+        """Scan raw RTTI data for path strings using CRC32-C validation.
+
+        Each BaseString is: [len: uint32 LE][crc32c: uint32 LE][data: len bytes].
+        We validate the CRC32-C checksum to reliably identify strings,
+        then filter for path-like content.
+        """
+        paths = []
+        pos = 0
+        data_len = len(data)
+        file_exts = {'.core', '.stream', '.anim', '.dds', '.bin', '.txt',
+                     '.xml', '.json', '.hlsl', '.vfx', '.wav', '.ogg'}
+
+        while pos + 8 < data_len:
+            length = struct.unpack_from('<I', data, pos)[0]
+            if not (3 < length < 400):
+                pos += 1
+                continue
+
+            if pos + 8 + length > data_len:
+                pos += 1
+                continue
+
+            stored_crc = struct.unpack_from('<I', data, pos + 4)[0]
+            string_bytes = data[pos + 8:pos + 8 + length]
+            computed_crc = crc32c(string_bytes)
+
+            if stored_crc == computed_crc:
+                try:
+                    s = string_bytes.decode('utf-8')
+                except UnicodeDecodeError:
+                    pos += 1
+                    continue
+
+                # Filter: must look like a game asset path
+                if '/' in s and not any(c < ' ' for c in s):
+                    is_path = False
+                    for ext in file_exts:
+                        if s.endswith(ext):
+                            is_path = True
+                            break
+                    if not is_path:
+                        # Check if it starts with a known game directory
+                        parts = s.split('/')
+                        if parts and parts[0] in (
+                            'models', 'textures', 'shaders', 'localized', 'ui',
+                            'animations', 'cinematics', 'entities', 'interface',
+                            'prefetch', 'core', 'system', 'effects',
+                            'environments', 'sounds', 'movies', 'weather',
+                            'heightmap', 'gamecore', 'database', 'script',
+                            'templates',
+                        ):
+                            is_path = True
+
+                    if is_path:
+                        paths.append(s)
+
+                pos += 8 + length
+            else:
+                pos += 1
+
+        return paths
