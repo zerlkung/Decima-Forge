@@ -14,10 +14,16 @@ from .archive import DecimaArchive
 from .localization import extract_to_json, import_from_json, HZD_LANGUAGES
 from .font import extract_from_archive as extract_fonts
 from .prefetch import (
-    extract_prefetch_to_file,
+    extract_paths,
     build_global_hash_map,
 )
 from .hash import hash_path
+
+
+def _resolve_names(target_archive, prefetch_archive=None):
+    """Build hash→path map, optionally using a separate prefetch source."""
+    archives = [prefetch_archive, target_archive] if prefetch_archive else [target_archive]
+    return build_global_hash_map(archives)
 
 
 def cmd_list(args):
@@ -69,11 +75,10 @@ def cmd_extract(args):
 def cmd_unpack(args):
     archive = DecimaArchive.open(args.archive)
 
-    # Try to load prefetch for file names
     file_names = None
     if not args.no_names:
         try:
-            file_names = build_global_hash_map([args.archive])
+            file_names = _resolve_names(args.archive, args.prefetch)
             print(f"Loaded {len(file_names)} file names from prefetch")
         except Exception as e:
             print(f"Note: Could not load file names: {e}")
@@ -111,11 +116,10 @@ def cmd_repack(args):
 
 
 def cmd_export_loc(args):
-    # Load file names from prefetch if available
     file_names = None
     if not args.no_names:
         try:
-            file_names = build_global_hash_map([args.archive])
+            file_names = _resolve_names(args.archive, args.prefetch)
         except Exception:
             pass
 
@@ -138,7 +142,7 @@ def cmd_import_loc(args):
 def cmd_extract_fonts(_args):
     file_names = None
     try:
-        file_names = build_global_hash_map([_args.archive])
+        file_names = _resolve_names(_args.archive, _args.prefetch)
     except Exception:
         pass
 
@@ -158,9 +162,24 @@ def cmd_hash(_args):
 
 
 def cmd_file_list(_args):
-    archive = DecimaArchive.open(_args.archive)
+    target = DecimaArchive.open(_args.archive)
     output = _args.output or (Path(_args.archive).stem + '_file_list.txt')
-    paths = extract_prefetch_to_file(archive, output)
+
+    if _args.prefetch:
+        prefetch_archive = DecimaArchive.open(_args.prefetch)
+        paths = extract_paths(prefetch_archive)
+        # Map only paths whose hash exists in the target archive
+        target_hashes = {e.hash for e in target.file_entries}
+        paths = [p for p in paths if any(
+            hash_path(v) in target_hashes
+            for v in (p, p + '.core', p + '.core.stream')
+        )]
+    else:
+        paths = extract_paths(target)
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text('\n'.join(paths), encoding='utf-8')
     print(f"Extracted {len(paths)} file paths to {output}")
     return 0
 
@@ -173,11 +192,11 @@ def main():
 Examples:
   decimaforge list initial.bin
   decimaforge extract initial.bin "models/characters/aloy/model.core"
-  decimaforge unpack initial_english.bin
+  decimaforge unpack Patch_HZDTHAI.bin --prefetch initial.bin
   decimaforge export-loc initial_english.bin --lang th
   decimaforge import-loc initial_english.bin loc.json --lang th
   decimaforge extract-fonts initial.bin
-  decimaforge file-list initial.bin
+  decimaforge file-list Patch_HZDTHAI.bin --prefetch initial.bin
   decimaforge hash "ui/fonts/font_book.core"
         """,
     )
@@ -201,6 +220,7 @@ Examples:
     p = subs.add_parser('unpack', help='Unpack entire archive')
     p.add_argument('archive')
     p.add_argument('output', nargs='?', help='Output directory')
+    p.add_argument('--prefetch', help='Archive with prefetch data (e.g., initial.bin)')
     p.add_argument('--no-names', action='store_true', help='Do not resolve file names')
     p.set_defaults(func=cmd_unpack)
 
@@ -215,6 +235,7 @@ Examples:
     p.add_argument('archive')
     p.add_argument('output', nargs='?', help='Output JSON file')
     p.add_argument('--lang', help='Target language code (e.g., th, fr, zh-Hant)')
+    p.add_argument('--prefetch', help='Archive with prefetch data (e.g., initial.bin)')
     p.add_argument('--no-names', action='store_true', help='Do not resolve file names')
     p.set_defaults(func=cmd_export_loc)
 
@@ -230,12 +251,14 @@ Examples:
     p = subs.add_parser('extract-fonts', help='Extract font textures')
     p.add_argument('archive')
     p.add_argument('output', nargs='?', help='Output directory')
+    p.add_argument('--prefetch', help='Archive with prefetch data (e.g., initial.bin)')
     p.set_defaults(func=cmd_extract_fonts)
 
     # file-list
     p = subs.add_parser('file-list', help='Extract file path list from prefetch')
     p.add_argument('archive')
     p.add_argument('output', nargs='?', help='Output text file')
+    p.add_argument('--prefetch', help='Archive with prefetch data (e.g., initial.bin)')
     p.set_defaults(func=cmd_file_list)
 
     # hash

@@ -44,14 +44,17 @@ python -m decimaforge <command>
 # List files in archive
 decimaforge list initial.bin -a
 
-# Extract file path list
+# Extract file path list (use --prefetch for patch archives)
 decimaforge file-list initial.bin
+decimaforge file-list Patch_HZDTHAI.bin --prefetch initial.bin
 
 # Unpack entire archive
 decimaforge unpack initial.bin extracted/
+decimaforge unpack Patch_HZDTHAI.bin --prefetch initial.bin
 
 # Export Thai localization
 decimaforge export-loc initial_english.bin --lang th
+decimaforge export-loc Patch_HZDTHAI.bin --lang th --prefetch initial.bin
 
 # Edit loc.json, then import back
 decimaforge import-loc initial_english.bin loc.json --lang th
@@ -72,12 +75,12 @@ decimaforge repack extracted/ new_archive.bin
 |---------|-------|-------------|
 | `list` | `decimaforge list <archive> [-a]` | List files in archive (`-a` for all) |
 | `extract` | `decimaforge extract <archive> <hash\|path> [output]` | Extract a single file |
-| `unpack` | `decimaforge unpack <archive> [dir] [--no-names]` | Unpack all files to directory |
+| `unpack` | `decimaforge unpack <archive> [dir] [--prefetch] [--no-names]` | Unpack all files to directory |
 | `repack` | `decimaforge repack <folder> [output]` | Repack folder (must have manifest.json) |
-| `export-loc` | `decimaforge export-loc <archive> [output] [--lang]` | Export localization to JSON |
+| `export-loc` | `decimaforge export-loc <archive> [output] [--lang] [--prefetch]` | Export localization to JSON |
 | `import-loc` | `decimaforge import-loc <archive> <json> [dir] --lang` | Import localization from JSON |
-| `extract-fonts` | `decimaforge extract-fonts <archive> [dir]` | Extract font textures as DDS |
-| `file-list` | `decimaforge file-list <archive> [output]` | Extract prefetch file paths |
+| `extract-fonts` | `decimaforge extract-fonts <archive> [dir] [--prefetch]` | Extract font textures as DDS |
+| `file-list` | `decimaforge file-list <archive> [output] [--prefetch]` | Extract prefetch file paths |
 | `hash` | `decimaforge hash <path>` | Compute MurmurHash3 file path hash |
 
 ## Supported Languages
@@ -160,14 +163,17 @@ python -m decimaforge <command>
 # ดูไฟล์ใน archive
 decimaforge list initial.bin -a
 
-# ดึงรายชื่อไฟล์
+# ดึงรายชื่อไฟล์ (ใช้ --prefetch สำหรับ patch archive)
 decimaforge file-list initial.bin
+decimaforge file-list Patch_HZDTHAI.bin --prefetch initial.bin
 
 # แกะ archive ทั้งหมด
 decimaforge unpack initial.bin extracted/
+decimaforge unpack Patch_HZDTHAI.bin --prefetch initial.bin
 
 # ส่งออกข้อความภาษาไทย
 decimaforge export-loc initial_english.bin --lang th
+decimaforge export-loc Patch_HZDTHAI.bin --lang th --prefetch initial.bin
 
 # แก้ไข loc.json แล้วนำเข้ากลับ
 decimaforge import-loc initial_english.bin loc.json --lang th
@@ -188,12 +194,12 @@ decimaforge repack extracted/ new_archive.bin
 |---------|-------|-----------|
 | `list` | `decimaforge list <archive> [-a]` | แสดงไฟล์ใน archive (`-a` แสดงทั้งหมด) |
 | `extract` | `decimaforge extract <archive> <hash\|path> [output]` | แยกไฟล์เดี่ยว |
-| `unpack` | `decimaforge unpack <archive> [dir] [--no-names]` | แกะทุกไฟล์ไปโฟลเดอร์ |
+| `unpack` | `decimaforge unpack <archive> [dir] [--prefetch] [--no-names]` | แกะทุกไฟล์ไปโฟลเดอร์ |
 | `repack` | `decimaforge repack <folder> [output]` | แพ็คโฟลเดอร์กลับ (ต้องมี manifest.json) |
-| `export-loc` | `decimaforge export-loc <archive> [output] [--lang]` | ส่งออกข้อความเป็น JSON |
+| `export-loc` | `decimaforge export-loc <archive> [output] [--lang] [--prefetch]` | ส่งออกข้อความเป็น JSON |
 | `import-loc` | `decimaforge import-loc <archive> <json> [dir] --lang` | นำเข้าข้อความจาก JSON |
-| `extract-fonts` | `decimaforge extract-fonts <archive> [dir]` | ดึงฟอนต์เป็น DDS |
-| `file-list` | `decimaforge file-list <archive> [output]` | ดึงรายชื่อไฟล์จาก prefetch |
+| `extract-fonts` | `decimaforge extract-fonts <archive> [dir] [--prefetch]` | ดึงฟอนต์เป็น DDS |
+| `file-list` | `decimaforge file-list <archive> [output] [--prefetch]` | ดึงรายชื่อไฟล์จาก prefetch |
 | `hash` | `decimaforge hash <path>` | คำนวณ MurmurHash3 ของพาธ |
 
 ## ภาษาที่รองรับ
