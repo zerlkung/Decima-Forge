@@ -15,6 +15,7 @@ from .localization import extract_to_json, import_from_json, HZD_LANGUAGES
 from .font import extract_from_archive as extract_fonts
 from .prefetch import (
     extract_paths,
+    extract_paths_cached,
     build_global_hash_map,
 )
 from .hash import hash_path
@@ -166,9 +167,7 @@ def cmd_file_list(_args):
     output = _args.output or (Path(_args.archive).stem + '_file_list.txt')
 
     if _args.prefetch:
-        prefetch_archive = DecimaArchive.open(_args.prefetch)
-        paths = extract_paths(prefetch_archive)
-        # Map only paths whose hash exists in the target archive
+        paths = extract_paths_cached(_args.prefetch)
         target_hashes = {e.hash for e in target.file_entries}
         paths = [p for p in paths if any(
             hash_path(v) in target_hashes

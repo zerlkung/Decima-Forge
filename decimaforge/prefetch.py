@@ -24,6 +24,27 @@ from .core import CoreFile, PrefetchList, TYPE_PREFETCH_LIST
 from .hash import hash_path
 
 
+def extract_paths_cached(archive_path: str | Path) -> list[str]:
+    """Extract paths from archive, using a cache file for subsequent runs.
+
+    On first run, reads the archive and saves paths to {archive}.prefetch.txt.
+    On later runs, reads from the cache directly.
+    """
+    archive_path = Path(archive_path)
+    cache_path = archive_path.with_suffix(archive_path.suffix + '.prefetch.txt')
+
+    if cache_path.exists() and cache_path.stat().st_mtime > archive_path.stat().st_mtime:
+        return cache_path.read_text(encoding='utf-8').splitlines()
+
+    archive = DecimaArchive.open(archive_path)
+    paths = extract_paths(archive)
+
+    if paths:
+        cache_path.write_text('\n'.join(paths), encoding='utf-8')
+
+    return paths
+
+
 def extract_paths(archive: DecimaArchive) -> list[str]:
     """Extract all file paths from a prefetch .core file in the archive.
 
@@ -104,11 +125,9 @@ def build_global_hash_map(archive_paths: list[str | Path]) -> dict[int, str]:
 
     # Collect all paths from all archives
     for ap in archive_paths:
-        archive = DecimaArchive.open(ap)
-        paths = extract_paths(archive)
+        paths = extract_paths_cached(ap)
         if paths:
             all_paths.extend(paths)
-        # Use the first archive with prefetch data as source
         if all_paths:
             break
 
